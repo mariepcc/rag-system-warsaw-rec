@@ -1,0 +1,6 @@
+pandas
+openai
+psycopg
+python-dotenv
+instructor
+anthropic
