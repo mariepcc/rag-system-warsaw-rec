@@ -4,9 +4,6 @@ Verifies that the API is not exposed due to misconfigured security settings:
 CORS policy, HTTP security headers, documentation exposure, and error handling.
 """
 
-import pytest
-
-
 SENSITIVE_KEYWORDS = [
     "traceback",
     'file "',
@@ -149,12 +146,6 @@ class TestA02SecurityMisconfiguration:
             f"Expected Content-Type: application/json, got: '{content_type}'"
         )
 
-    @pytest.mark.xfail(
-        reason="uvicorn sets Server header before middleware runs. "
-        "Fix requires --no-server-header flag in uvicorn config. "
-        "Known limitation, low severity.",
-        strict=False,
-    )
     def test_server_header_does_not_leak_technology(self, client):
         """
         A02-8: The Server header should not reveal implementation details

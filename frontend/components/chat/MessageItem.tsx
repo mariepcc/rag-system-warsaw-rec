@@ -43,7 +43,7 @@ export const MessageItem = memo(
             >
               {places.map((place) => (
                 <PlaceCard
-                  key={place.name}
+                  key={place.id}
                   place={place}
                   onPress={() => onPlacePress(place)}
                 />

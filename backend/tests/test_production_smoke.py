@@ -6,7 +6,6 @@ Run against live deployment:
 
 import pytest
 import httpx
-import os
 
 BASE_URL = "https://spotguide.me"
 

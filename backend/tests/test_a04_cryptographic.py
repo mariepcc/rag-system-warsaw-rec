@@ -1,6 +1,9 @@
 """
-OWASP A04 — Cryptographic Failures
-Weryfikuje że tokeny są poprawnie walidowane kryptograficznie.
+OWASP A04:2025 — Cryptographic Failures
+Also covers: M10 (Insufficient Cryptography), M1 (Improper Credential Usage), API2 (Broken Authentication)
+
+Verifies that tokens are correctly validated cryptographically
+and that the API does not accept forged or weakly signed credentials.
 """
 
 import base64
@@ -10,13 +13,12 @@ import pytest
 
 
 def _make_fake_token(algorithm: str = "HS256", expired: bool = False) -> str:
-    """Tworzy nieprawidłowy token JWT do testów."""
+    """Builds a structurally valid but cryptographically invalid JWT for testing."""
     header = (
         base64.urlsafe_b64encode(json.dumps({"alg": algorithm, "typ": "JWT"}).encode())
         .rstrip(b"=")
         .decode()
     )
-
     payload = (
         base64.urlsafe_b64encode(
             json.dumps(
@@ -30,69 +32,65 @@ def _make_fake_token(algorithm: str = "HS256", expired: bool = False) -> str:
         .rstrip(b"=")
         .decode()
     )
-
     return f"{header}.{payload}.fakesignature"
 
 
-class TestA02CryptographicFailures:
-    def test_token_hs256_jest_odrzucany(self, client):
+class TestA04CryptographicFailures:
+    def test_hs256_token_is_rejected(self, client):
         """
-        A02-1: Token podpisany algorytmem HS256 zamiast RS256.
-        Cognito używa RS256 — inny algorytm powinien być odrzucony.
-        Oczekiwany wynik: 401 Unauthorized
+        A04-1: Token signed with HS256 instead of RS256.
+        Cognito uses RS256 — a different algorithm must be rejected.
+        Expected result: 401 Unauthorized
+        Covers: M10 (Insufficient Cryptography), API2 (Broken Authentication)
         """
         fake_token = _make_fake_token(algorithm="HS256")
-
         response = client.get(
             "/places/favourites",
             headers={"Authorization": f"Bearer {fake_token}"},
         )
-
         assert response.status_code == 401, (
-            f"Token HS256 powinien być odrzucony — API akceptuje tylko RS256. "
-            f"Otrzymano: {response.status_code} — potencjalna luka A02!"
+            f"HS256 token should be rejected — API accepts RS256 only. "
+            f"Got: {response.status_code} — potential A04 vulnerability!"
         )
 
-    def test_token_z_falszywa_sygnatura_jest_odrzucany(self, client):
+    def test_fake_signature_is_rejected(self, client):
         """
-        A02-2: Token z prawidłowym formatem ale fałszywą sygnaturą.
-        Oczekiwany wynik: 401 Unauthorized
+        A04-2: Token with valid format but a fake signature.
+        Expected result: 401 Unauthorized
+        Covers: M10 (Insufficient Cryptography)
         """
         fake_token = _make_fake_token(algorithm="RS256")
-
         response = client.get(
             "/places/favourites",
             headers={"Authorization": f"Bearer {fake_token}"},
         )
-
         assert response.status_code == 401, (
-            f"Token z fałszywą sygnaturą powinien być odrzucony. "
-            f"Otrzymano: {response.status_code} — potencjalna luka A02!"
+            f"Token with fake signature should be rejected. "
+            f"Got: {response.status_code} — potential A04 vulnerability!"
         )
 
-    def test_wygasly_token_jest_odrzucany(self, client):
+    def test_expired_token_is_rejected(self, client):
         """
-        A02-3: Token z datą wygaśnięcia w przeszłości (exp: 2001-09-09).
-        Oczekiwany wynik: 401 Unauthorized
+        A04-3: Token with expiry date in the past (exp: 2001-09-09).
+        Expected result: 401 Unauthorized
+        Covers: M1 (Improper Credential Usage), API2 (Broken Authentication)
         """
         fake_token = _make_fake_token(expired=True)
-
         response = client.get(
             "/places/favourites",
             headers={"Authorization": f"Bearer {fake_token}"},
         )
-
         assert response.status_code == 401, (
-            f"Wygasły token powinien być odrzucony. "
-            f"Otrzymano: {response.status_code} — potencjalna luka A02!"
+            f"Expired token should be rejected. "
+            f"Got: {response.status_code} — potential A04 vulnerability!"
         )
 
-    def test_pusty_token_jest_odrzucany(self, client):
+    def test_empty_bearer_token_is_rejected(self, client):
         """
-        A02-4: Pusty string jako token.
-        httpx odrzuca nagłówek 'Bearer ' jako nieprawidłowy HTTP —
-        co samo w sobie jest poprawnym zachowaniem (LocalProtocolError).
-        Testujemy też wariant bez spacji.
+        A04-4: Empty string as token.
+        httpx rejects 'Bearer ' as invalid HTTP (LocalProtocolError) —
+        which is itself correct behavior.
+        Also tests 'Bearer' without a token value.
         """
         with pytest.raises(httpx_lib.LocalProtocolError):
             client.get(
@@ -105,75 +103,66 @@ class TestA02CryptographicFailures:
             headers={"Authorization": "Bearer"},
         )
         assert response.status_code in (401, 403, 422), (
-            f"'Bearer' bez tokena powinien być odrzucony. "
-            f"Otrzymano: {response.status_code}"
+            f"'Bearer' without token should be rejected. Got: {response.status_code}"
         )
 
-    def test_losowy_string_jako_token_jest_odrzucany(self, client):
+    def test_random_string_token_is_rejected(self, client):
         """
-        A02-5: Całkowicie losowy string zamiast JWT.
-        Oczekiwany wynik: 401 Unauthorized
+        A04-5: Completely random string instead of JWT.
+        Expected result: 401 Unauthorized
+        Covers: M1 (Improper Credential Usage)
         """
         response = client.get(
             "/places/favourites",
             headers={"Authorization": "Bearer abcdef123456"},
         )
-
         assert response.status_code == 401, (
-            f"Losowy string jako token powinien być odrzucony. "
-            f"Otrzymano: {response.status_code}"
+            f"Random string token should be rejected. "
+            f"Got: {response.status_code} — potential A04 vulnerability!"
         )
 
-    def test_brak_naglowka_authorization(self, client):
+    def test_missing_authorization_header_returns_401(self, client):
         """
-        A02-6: Request bez nagłówka Authorization w ogóle.
-        Oczekiwany wynik: 401 Unauthorized
+        A04-6: Request with no Authorization header at all.
+        Expected result: 401 Unauthorized
         """
         response = client.get("/places/favourites")
-
         assert response.status_code == 401, (
-            f"Brak nagłówka Authorization powinien zwrócić 401. "
-            f"Otrzymano: {response.status_code}"
+            f"Missing Authorization header should return 401. "
+            f"Got: {response.status_code}"
         )
 
-    def test_poprawny_token_jest_akceptowany(self, client, token_a):
+    def test_valid_token_is_accepted(self, client, token_a):
         """
-        A02-7: Prawidłowy token RS256 z Cognito.
-        Oczekiwany wynik: 200 OK — weryfikacja że walidacja nie blokuje
-        prawidłowych użytkowników.
+        A04-7: Valid RS256 token from Cognito.
+        Expected result: 200 OK
+        Sanity check — cryptographic validation must not block legitimate users.
         """
         response = client.get(
             "/places/favourites",
             headers={"Authorization": f"Bearer {token_a}"},
         )
-
         assert response.status_code == 200, (
-            f"Prawidłowy token powinien być akceptowany. "
-            f"Otrzymano: {response.status_code}"
+            f"Valid token should be accepted. Got: {response.status_code}"
         )
 
-    def test_odpowiedz_nie_zawiera_wrazliwych_danych_w_bledzie(self, client):
+    def test_error_response_does_not_expose_crypto_details(self, client):
         """
-        A02-8: Komunikat błędu nie ujawnia szczegółów implementacji.
-        Oczekiwany wynik: ogólny komunikat błędu bez stacktrace,
-        nazw algorytmów, struktury kluczy.
+        A04-8: Error response must not reveal cryptographic implementation details.
+        Expected result: generic error message without stack trace,
+        algorithm names, or key structure details.
+        Covers: M9 (Insecure Data Storage)
         """
         fake_token = _make_fake_token()
-
         response = client.get(
             "/places/favourites",
             headers={"Authorization": f"Bearer {fake_token}"},
         )
+        body = response.text.lower()
 
-        response_text = response.text.lower()
-
-        assert "traceback" not in response_text, (
-            "Odpowiedź zawiera traceback — nie ujawniaj szczegółów błędów!"
+        assert "traceback" not in body, (
+            "Response contains traceback — do not expose error details!"
         )
-        assert "jose" not in response_text, (
-            "Odpowiedź ujawnia nazwę biblioteki kryptograficznej!"
-        )
-        assert "jwks" not in response_text, "Odpowiedź ujawnia szczegóły walidacji JWT!"
-        assert "secret" not in response_text, (
-            "Odpowiedź może zawierać wrażliwe słowa kluczowe!"
-        )
+        assert "jose" not in body, "Response exposes name of cryptographic library!"
+        assert "jwks" not in body, "Response exposes JWT validation details!"
+        assert "secret" not in body, "Response may contain sensitive keywords!"

@@ -4,7 +4,9 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from jose import jwt, JWTError
 from datetime import datetime, timedelta
 from config.settings import get_settings
+import logging
 
+logger = logging.getLogger(__name__)
 security = HTTPBearer()
 settings = get_settings()
 
@@ -34,13 +36,13 @@ async def get_current_user(
     credentials: HTTPAuthorizationCredentials = Depends(security),
 ) -> dict:
     if credentials.scheme != "Bearer":
+        logger.warning("AUTH_FAILURE invalid_scheme scheme=%s", credentials.scheme)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid authorization scheme",
             headers={"WWW-Authenticate": "Bearer"},
         )
     token = credentials.credentials
-
     unauthorized_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Could not validate credentials",
@@ -49,17 +51,16 @@ async def get_current_user(
     try:
         jwks = get_jwks()
         header = jwt.get_unverified_header(token)
-
         if header.get("alg", "").lower() == "none":
+            logger.warning("AUTH_FAILURE alg=none token_prefix=%s", token[:20])
             raise unauthorized_exception
-
         key = next(
             (k for k in jwks["keys"] if k["kid"] == header.get("kid")),
             None,
         )
         if not key:
+            logger.warning("AUTH_FAILURE unknown_kid kid=%s", header.get("kid"))
             raise unauthorized_exception
-
         payload = jwt.decode(
             token,
             key,
@@ -70,10 +71,11 @@ async def get_current_user(
             "user_id": payload["sub"],
             "email": payload.get("email") or payload.get("cognito:username", ""),
         }
-
     except HTTPException:
         raise
-    except JWTError:
+    except JWTError as e:
+        logger.warning("AUTH_FAILURE jwt_error=%s token_prefix=%s", str(e), token[:20])
         raise unauthorized_exception
-    except Exception:
+    except Exception as e:
+        logger.warning("AUTH_FAILURE unexpected_error=%s", str(e))
         raise unauthorized_exception

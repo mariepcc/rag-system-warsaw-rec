@@ -38,7 +38,7 @@ module "cognito" {
 module "rds" {
   source      = "./modules/rds"
   vpc_id      = module.networking.vpc_id
-  subnet_ids  = module.networking.public_subnet_ids
+  subnet_ids  = module.networking.private_subnet_ids
   db_password = var.db_password
 }
 
@@ -80,6 +80,16 @@ module "ecs" {
   alb_security_group_id  = module.alb.alb_security_group_id
   target_group_arn       = module.alb.target_group_arn
   alb_https_listener_arn = module.alb.alb_listener_https_arn
+}
+
+module "monitoring" {
+  source = "./modules/monitoring"
+
+  ecs_cluster_name       = "spotguide-cluster"
+  ecs_service_name       = "spotguide-api"
+  db_instance_identifier = "spotguide-db"
+  alb_arn_suffix         = module.alb.alb_arn_suffix
+  target_group_arn_suffix = module.alb.target_group_arn_suffix
 }
 
 module "ga" {

@@ -143,7 +143,7 @@ class TestA10MishandlingOfExceptionalConditions:
         for rating in extreme_ratings:
             response = client.post(
                 f"/places/favourites/{valid_place_id}/toggle",
-                json={"name": "Test Place", "rating": rating},
+                json={"name": "Test Place", "rating": rating, "id": valid_place_id},
                 headers={"Authorization": f"Bearer {token_a}"},
             )
             assert response.status_code != 500, (

@@ -1,11 +1,37 @@
 import os
+import logging
+
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+LOG_FILE = os.getenv("LOG_FILE", os.path.join(BASE_DIR, "app.log"))
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s %(name)s %(message)s",
+    handlers=[
+        logging.FileHandler(LOG_FILE),
+        logging.StreamHandler(),
+    ],
+)
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from routers import chat, sessions, places
 from config.settings import get_settings
 
-settings = get_settings()
+
 ENVIRONMENT = os.getenv("ENVIRONMENT", "dev")
+
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s %(name)s %(message)s",
+    handlers=[
+        logging.FileHandler(LOG_FILE),
+        logging.StreamHandler(),
+    ],
+)
+
+settings = get_settings()
+
 
 app = FastAPI(
     title="Warsaw Spot Guide API",
@@ -29,7 +55,7 @@ async def add_security_headers(request, call_next):
     response = await call_next(request)
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["X-Frame-Options"] = "DENY"
-    response.headers["server"] = "Spot-Guide"
+    response.headers["server"] = "spotguide"
     response.headers["Strict-Transport-Security"] = (
         "max-age=31536000; includeSubDomains"
     )

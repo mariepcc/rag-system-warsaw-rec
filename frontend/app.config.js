@@ -51,7 +51,7 @@ export default {
       reactCompiler: true,
     },
     extra: {
-      apiUrl: process.env.API_URL_PROD,
+      apiUrl: process.env.API_URL,
       cognitoUserPoolId: process.env.COGNITO_USER_POOL_ID,
       cognitoAppClientId: process.env.COGNITO_APP_CLIENT_ID,
       eas: {

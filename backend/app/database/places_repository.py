@@ -7,7 +7,7 @@ from schemas.places import SavedPlaceResponse
 
 CREATE_TABLE_SQL = """
 CREATE TABLE IF NOT EXISTS saved_places (
-    id            TEXT PRIMARY KEY,
+    id            TEXT,
     user_id       TEXT NOT NULL,
     session_id    TEXT,
     name          TEXT NOT NULL,
@@ -21,10 +21,11 @@ CREATE TABLE IF NOT EXISTS saved_places (
     menu_url      TEXT,
     main_category TEXT,
     sub_category  TEXT,
+    editorial_summary TEXT,
     is_favourite   BOOLEAN DEFAULT FALSE,
     metadata      JSONB,
     created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    UNIQUE(user_id, name)
+    PRIMARY KEY (id, user_id)
 );
 """
 

@@ -60,6 +60,3 @@ def session_id_a(token_a, client):
     sessions = response.json()
     assert len(sessions) > 0, "Użytkownik A nie ma żadnych sesji — utwórz je ręcznie"
     return sessions[0]["id"]
-
-
-print(f"Full Token A: {get_token(USER_A_EMAIL, USER_A_PASSWORD)}")
