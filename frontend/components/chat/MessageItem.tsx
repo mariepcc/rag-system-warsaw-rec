@@ -16,9 +16,11 @@ export const MessageItem = memo(
   ({
     item,
     onPlacePress,
+    sessionId,
   }: {
     item: Message;
     onPlacePress: (place: Place) => void;
+    sessionId?: string;
   }) => {
     const isUser = item.role === "user";
     const places = useMemo(() => item.places ?? [], [item.id]);
@@ -45,6 +47,7 @@ export const MessageItem = memo(
                 <PlaceCard
                   key={place.id}
                   place={place}
+                  sessionId={sessionId}
                   onPress={() => onPlacePress(place)}
                 />
               ))}

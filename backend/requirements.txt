@@ -1,4 +1,5 @@
 anthropic
+shapely
 openai
 instructor
 pydantic

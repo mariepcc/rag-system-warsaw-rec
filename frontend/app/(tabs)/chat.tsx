@@ -182,6 +182,7 @@ export default function ChatScreen() {
 
     try {
       const response = await sendMessage(text, sessionIdRef.current);
+      console.log("Chat response:", response.places);
       setSessionId(response.session_id);
       sessionIdRef.current = response.session_id;
       setMessages((prev) => [
@@ -231,9 +232,13 @@ export default function ChatScreen() {
 
   const renderItem = useCallback(
     ({ item }: { item: Message }) => (
-      <MessageItem item={item} onPlacePress={handlePlacePress} />
+      <MessageItem
+        item={item}
+        onPlacePress={handlePlacePress}
+        sessionId={sessionId}
+      />
     ),
-    [handlePlacePress],
+    [handlePlacePress, sessionId],
   );
 
   const inputPaddingBottom = keyboardOpen

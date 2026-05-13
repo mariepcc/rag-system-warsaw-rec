@@ -4,7 +4,9 @@ import re
 import psycopg2
 from psycopg2.extras import RealDictCursor
 from schemas.chat import ChatMessage
+import logging
 
+logger = logging.getLogger(__name__)
 
 CREATE_TABLES_SQL = """
 CREATE TABLE IF NOT EXISTS chat_sessions (
@@ -58,34 +60,38 @@ class ChatRepository:
                 )
 
     def get_sessions(self, user_id: str) -> List[dict]:
-        with self._get_conn() as conn:
-            with conn.cursor(cursor_factory=RealDictCursor) as cur:
-                cur.execute(
-                    """
-                    SELECT 
-                        s.id,
-                        s.created_at,
-                        (
-                            SELECT content 
-                            FROM chat_messages 
-                            WHERE session_id = s.id 
-                            AND role = 'user'
-                            ORDER BY created_at ASC 
-                            LIMIT 1
-                        ) as first_message,
-                        (
-                            SELECT COUNT(*) 
-                            FROM chat_messages 
-                            WHERE session_id = s.id
-                        ) as message_count
-                    FROM chat_sessions s
-                    WHERE s.user_id = %s::text
-                    ORDER BY s.created_at DESC
-                    """,
-                    (user_id,),
-                )
-                rows = cur.fetchall()
-                return [dict(row) for row in rows]
+        try:
+            with self._get_conn() as conn:
+                with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                    cur.execute(
+                        """
+                        SELECT 
+                            s.id,
+                            s.created_at,
+                            (
+                                SELECT content 
+                                FROM chat_messages 
+                                WHERE session_id = s.id 
+                                AND role = 'user'
+                                ORDER BY created_at ASC 
+                                LIMIT 1
+                            ) as first_message,
+                            (
+                                SELECT COUNT(*) 
+                                FROM chat_messages 
+                                WHERE session_id = s.id
+                            ) as message_count
+                        FROM chat_sessions s
+                        WHERE s.user_id = %s::text
+                        ORDER BY s.created_at DESC
+                        """,
+                        (user_id,),
+                    )
+                    rows = cur.fetchall()
+                    return [dict(row) for row in rows]
+        except psycopg2.OperationalError as e:
+            logger.error(f"DB connection error in get_sessions: {e}", exc_info=True)
+            raise
 
     def delete_session(self, session_id: str, user_id: str) -> None:
         with self._get_conn() as conn:
@@ -124,14 +130,14 @@ class ChatRepository:
                 cur.execute(
                     """
                     INSERT INTO chat_messages (session_id, role, content, message_type, recommended_places)
-                    VALUES (%s, %s, %s, %s, %s::jsonb)
+                    VALUES (%s, %s, %s, %s, %s)
                     """,
                     (
                         session_id,
                         role,
                         content,
                         message_type,
-                        json.dumps(recommended_places) if recommended_places else None,
+                        recommended_places or None,
                     ),
                 )
 
@@ -164,37 +170,38 @@ class ChatRepository:
             with conn.cursor(cursor_factory=RealDictCursor) as cur:
                 cur.execute(
                     """
-                    SELECT recommended_places
-                    FROM chat_messages
-                    WHERE session_id = %s
-                    AND role = 'assistant'
-                    AND message_type IN ('rag', 'hybrid')
-                    AND recommended_places IS NOT NULL
-                    ORDER BY created_at DESC
-                    LIMIT 1
+                    SELECT p.*
+                    FROM chat_messages m
+                    CROSS JOIN LATERAL unnest(m.recommended_places) AS place_id
+                    JOIN places p ON p.id = place_id
+                    WHERE m.session_id = %s
+                    AND m.role = 'assistant'
+                    AND m.message_type IN ('rag', 'hybrid')
+                    AND m.recommended_places IS NOT NULL
+                    ORDER BY m.created_at DESC
+                    LIMIT 5
                     """,
                     (session_id,),
                 )
-                row = cur.fetchone()
-        if not row or not row["recommended_places"]:
+                rows = cur.fetchall()
+        if not rows:
             return None
-
-        return json.dumps(row["recommended_places"])
+        return json.dumps([dict(r) for r in rows])
 
     def get_all_recommended_names(self, user_id: str) -> List[str]:
         with self._get_conn() as conn:
             with conn.cursor() as cur:
                 cur.execute(
                     """
-                        SELECT DISTINCT elem->>'name' as place_name
-                        FROM chat_sessions s
-                        JOIN chat_messages m ON m.session_id = s.id
-                        CROSS JOIN LATERAL jsonb_array_elements(m.recommended_places) AS elem
-                        WHERE s.user_id = %s
-                        AND m.role = 'assistant'
-                        AND m.recommended_places IS NOT NULL
-                        AND elem->>'name' IS NOT NULL
-                        """,
+                    SELECT DISTINCT p.name
+                    FROM chat_sessions s
+                    JOIN chat_messages m ON m.session_id = s.id
+                    CROSS JOIN LATERAL unnest(m.recommended_places) AS place_id
+                    JOIN places p ON p.id = place_id
+                    WHERE s.user_id = %s
+                    AND m.role = 'assistant'
+                    AND m.recommended_places IS NOT NULL
+                    """,
                     (user_id,),
                 )
                 rows = cur.fetchall()
@@ -202,7 +209,6 @@ class ChatRepository:
 
     def search_sessions(self, user_id: str, search_query: str) -> List[dict]:
         safe_query = re.sub(r"[^\w\s\-]", "", search_query).strip()[:100]
-        jsonpath_query = f'$[*].name ? (@ like_regex "{safe_query}" flag "i")'
         like_query = f"%{safe_query}%"
 
         with self._get_conn() as conn:
@@ -223,16 +229,17 @@ class ChatRepository:
                     AND EXISTS (
                         SELECT 1
                         FROM chat_messages m
+                        LEFT JOIN LATERAL unnest(m.recommended_places) AS place_id ON true
+                        LEFT JOIN places p ON p.id = place_id
                         WHERE m.session_id = s.id
-                            AND (
-                                m.content ILIKE %s
-                                OR
-                                m.recommended_places @? %s::jsonpath
-                            )
+                        AND (
+                            m.content ILIKE %s
+                            OR p.name ILIKE %s
+                        )
                     )
                     ORDER BY s.created_at DESC
                     """,
-                    (user_id, like_query, jsonpath_query),
+                    (user_id, like_query, like_query),
                 )
                 rows = cur.fetchall()
         return [dict(row) for row in rows]

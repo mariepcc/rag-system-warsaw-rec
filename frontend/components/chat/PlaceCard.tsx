@@ -59,11 +59,13 @@ function getActiveTags(place: Place) {
 export function PlaceCard({
   place,
   onPress,
+  sessionId,
 }: {
   place: Place;
   onPress?: () => void;
+  sessionId?: string;
 }) {
-  const { isFav, loading, toggle } = useFavourite(place);
+  const { isFav, loading, toggle } = useFavourite(place, sessionId);
   const heartScale = useRef(new Animated.Value(1)).current;
   const activeTags = getActiveTags(place);
 

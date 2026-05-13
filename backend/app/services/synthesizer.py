@@ -106,6 +106,7 @@ class Synthesizer:
     @staticmethod
     def _dataframe_to_json(context: pd.DataFrame) -> str:
         columns = [
+            "place_id",
             "name",
             "address",
             "district",

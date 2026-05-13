@@ -25,10 +25,17 @@ JWKS_TTL = timedelta(hours=1)
 def get_jwks():
     now = datetime.utcnow()
     if _jwks_cache["data"] is None or now - _jwks_cache["fetched_at"] > JWKS_TTL:
-        response = httpx.get(COGNITO_JWKS_URL, timeout=5.0)
-        response.raise_for_status()
-        _jwks_cache["data"] = response.json()
-        _jwks_cache["fetched_at"] = now
+        try:
+            response = httpx.get(COGNITO_JWKS_URL, timeout=5.0)
+            response.raise_for_status()
+            _jwks_cache["data"] = response.json()
+            _jwks_cache["fetched_at"] = now
+        except httpx.TimeoutException as e:
+            logger.error("JWKS fetch timeout: %s", str(e))
+            raise HTTPException(status_code=503, detail="Auth service unavailable")
+        except httpx.HTTPError as e:
+            logger.error("JWKS fetch error: %s", str(e))
+            raise HTTPException(status_code=503, detail="Auth service unavailable")
     return _jwks_cache["data"]
 
 

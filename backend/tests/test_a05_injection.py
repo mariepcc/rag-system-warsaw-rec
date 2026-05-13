@@ -25,12 +25,11 @@ OVERSIZED_PAYLOADS = [
 ]
 
 
-class TestA03Injection:
+class TestA05Injection:
     def test_sql_injection_in_category_filter(self, client, token_a):
         """
-        A03-1: SQL injection attempts in the category query parameter.
-        Expected: 200 with empty list OR 422 Unprocessable Entity.
-        Must NOT return a 500 (database error leaking internals).
+        A05-1:  SQL injection attempts in the category query parameter.
+        Expected: 200 with empty list OR 422. Must NOT return 500.
         """
         for payload in SQL_INJECTION_PAYLOADS:
             response = client.get(
@@ -39,19 +38,14 @@ class TestA03Injection:
                 headers={"Authorization": f"Bearer {token_a}"},
             )
             assert response.status_code in (200, 422), (
-                f"SQL injection payload '{payload}' caused unexpected response: "
+                f"SQL injection payload '{payload}' caused: "
                 f"{response.status_code} — possible injection vulnerability!"
-            )
-            assert response.status_code != 500, (
-                f"Payload '{payload}' caused a 500 error — "
-                f"possible database error leaking internals!"
             )
 
     def test_sql_injection_in_search(self, client, token_a):
         """
-        A03-2: SQL injection attempts in session search query.
-        Expected: 200 with results only for the authenticated user,
-        or 422. Must NOT return other users' data.
+        A05-2: SQL injection in session search query.
+        Expected: 200 or 422. Must NOT return 500 or other users' data.
         """
         for payload in SQL_INJECTION_PAYLOADS:
             response = client.get(
@@ -62,83 +56,100 @@ class TestA03Injection:
             assert response.status_code in (200, 422), (
                 f"SQL injection in search caused: {response.status_code}"
             )
-            assert response.status_code != 500, (
-                f"Payload '{payload}' caused a 500 — possible SQL injection!"
-            )
 
-    def test_invalid_rating_type_is_rejected(self, client, token_a):
+    def test_sql_injection_in_toggle_place_id(self, client, token_a):
         """
-        A03-3: Sending a string instead of float for the rating field.
-        Pydantic should reject this with 422 Unprocessable Entity.
+        A05-3: SQL injection in place_id path parameter.
+        place_id is passed directly to parameterized query — must not cause 500.
+        Expected: 422 (FK violation — place doesn't exist) or 200.
         """
-        response = client.post(
-            "/places/favourites/test-id/toggle",
-            json={
-                "name": "Test Place",
-                "rating": "not_a_number",
-            },
-            headers={"Authorization": f"Bearer {token_a}"},
-        )
-        assert response.status_code == 422, (
-            f"Invalid rating type should be rejected by Pydantic. "
-            f"Got: {response.status_code}"
-        )
-
-    def test_invalid_boolean_field_is_rejected(self, client, token_a):
-        """
-        A03-4: Sending a string instead of boolean for serves_vegetarian.
-        Pydantic should reject this with 422 Unprocessable Entity.
-        """
-        response = client.post(
-            "/places/favourites/test-id/toggle",
-            json={
-                "name": "Test Place",
-                "serves_vegetarian": "yes_please",
-            },
-            headers={"Authorization": f"Bearer {token_a}"},
-        )
-        assert response.status_code == 422, (
-            f"Invalid boolean type should be rejected. Got: {response.status_code}"
-        )
-
-    def test_missing_required_name_field_is_rejected(self, client, token_a):
-        """
-        A03-5: Sending toggle request without the required 'name' field.
-        Expected: 422 Unprocessable Entity.
-        """
-        response = client.post(
-            "/places/favourites/test-id/toggle",
-            json={"rating": 4.5},
-            headers={"Authorization": f"Bearer {token_a}"},
-        )
-        assert response.status_code == 422, (
-            f"Request without required 'name' field should be rejected. "
-            f"Got: {response.status_code}"
-        )
-
-    def test_xss_payload_in_place_name_is_handled(self, client, token_a):
-        """
-        A03-6: XSS payloads in the place name field.
-        API should either accept and store as plain text (200/201)
-        or reject (422). Must NOT execute or reflect script tags.
-        """
-        for payload in XSS_PAYLOADS:
+        for payload in SQL_INJECTION_PAYLOADS:
             response = client.post(
-                "/places/favourites/test-id/toggle",
-                json={"name": payload},
+                f"/places/favourites/{payload}/toggle",
+                json={"sessionId": None},
                 headers={"Authorization": f"Bearer {token_a}"},
             )
-            assert response.status_code in (200, 201, 422), (
-                f"XSS payload in name caused unexpected: {response.status_code}"
+            assert response.status_code in (200, 422), (
+                f"SQL injection in place_id caused: {response.status_code} — "
+                f"possible injection vulnerability!"
             )
-            assert response.status_code != 500, (
-                "XSS payload caused server error — check input handling!"
+
+    def test_toggle_with_no_body_uses_null_session(self, client, token_a):
+        """
+        A05-4: Toggle with empty body — sessionId defaults to None.
+        ToggleFavouriteRequest has only optional sessionId, so empty body
+        is valid. Must NOT return 500.
+        """
+        import uuid
+
+        place_id = str(uuid.uuid4())
+        response = client.post(
+            f"/places/favourites/{place_id}/toggle",
+            json={},
+            headers={"Authorization": f"Bearer {token_a}"},
+        )
+        assert response.status_code in (200, 422), (
+            f"Toggle with empty body caused: {response.status_code}"
+        )
+
+    def test_toggle_with_sql_injection_in_session_id(self, client, token_a):
+        """
+        A05-5: SQL injection in sessionId body field.
+        sessionId is passed to parameterized query — must be stored as plain text
+        or rejected, never executed. Must NOT cause 500.
+        """
+        import uuid
+
+        place_id = str(uuid.uuid4())
+        for payload in SQL_INJECTION_PAYLOADS:
+            response = client.post(
+                f"/places/favourites/{place_id}/toggle",
+                json={"sessionId": payload},
+                headers={"Authorization": f"Bearer {token_a}"},
+            )
+            assert response.status_code in (200, 422), (
+                f"SQL injection in sessionId caused: {response.status_code}"
+            )
+
+    def test_oversized_session_id_is_handled(self, client, token_a):
+        """
+        A05-6: Oversized sessionId value — must not crash the server.
+        Expected: 200 (stored as-is) or 422 (rejected by validator).
+        """
+        import uuid
+
+        place_id = str(uuid.uuid4())
+        response = client.post(
+            f"/places/favourites/{place_id}/toggle",
+            json={"sessionId": "A" * 10_000},
+            headers={"Authorization": f"Bearer {token_a}"},
+        )
+        assert response.status_code in (200, 422), (
+            f"Oversized sessionId caused: {response.status_code}"
+        )
+
+    def test_xss_payload_in_session_id_is_handled(self, client, token_a):
+        """
+        A05-7: XSS payloads in sessionId — API stores as plain text or rejects.
+        Must NOT execute or cause 500.
+        """
+        import uuid
+
+        place_id = str(uuid.uuid4())
+        for payload in XSS_PAYLOADS:
+            response = client.post(
+                f"/places/favourites/{place_id}/toggle",
+                json={"sessionId": payload},
+                headers={"Authorization": f"Bearer {token_a}"},
+            )
+            assert response.status_code in (200, 422), (
+                f"XSS payload in sessionId caused: {response.status_code}"
             )
 
     def test_oversized_chat_message_is_handled(self, client, token_a):
         """
-        A03-8: Large message sent to chat endpoint.
-        Requires ChatRequest validator — must return 422, not process with AI.
+        A05-8: Message over 10k chars sent to chat endpoint.
+        ChatRequest validator must reject with 422.
         """
         response = client.post(
             "/chat/message",
@@ -147,14 +158,12 @@ class TestA03Injection:
             timeout=15.0,
         )
         assert response.status_code == 422, (
-            f"Message over 10k chars should be rejected by validator. "
-            f"Got: {response.status_code}"
+            f"Message over 10k chars should be rejected. Got: {response.status_code}"
         )
 
     def test_empty_chat_message_is_rejected(self, client, token_a):
         """
-        A03-9: Empty string as chat message.
-        Requires ChatRequest validator — must return 422 immediately.
+        A05-9: Empty string as chat message — must return 422 immediately.
         """
         response = client.post(
             "/chat/message",
@@ -168,8 +177,7 @@ class TestA03Injection:
 
     def test_null_message_is_rejected(self, client, token_a):
         """
-        A03-10: Null value as chat message.
-        Expected: 422 Unprocessable Entity.
+        A05-10: Null value as chat message — must return 422.
         """
         response = client.post(
             "/chat/message",
@@ -180,22 +188,3 @@ class TestA03Injection:
         assert response.status_code == 422, (
             f"Null message should be rejected. Got: {response.status_code}"
         )
-
-    def test_sql_injection_in_toggle_name_field(self, client, token_a):
-        """
-        A03-11: SQL injection in place name.
-        Parameterized queries protect the DB — payload stored as plain text.
-        Must NOT cause 500.
-        """
-        for payload in SQL_INJECTION_PAYLOADS:
-            response = client.post(
-                "/places/favourites/test-id/toggle",
-                json={"name": payload},
-                headers={"Authorization": f"Bearer {token_a}"},
-                timeout=15.0,
-            )
-            assert response.status_code in (200, 201, 422), (
-                f"SQL injection in name caused: {response.status_code} — "
-                f"possible injection vulnerability!"
-            )
-            assert response.status_code != 500

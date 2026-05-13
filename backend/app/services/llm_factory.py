@@ -4,6 +4,10 @@ from anthropic import Anthropic
 from openai import OpenAI
 from pydantic import BaseModel
 from config.settings import get_settings
+import logging
+from openai import APITimeoutError, APIConnectionError, RateLimitError, APIStatusError
+
+logger = logging.getLogger(__name__)
 
 
 class LLMFactory:
@@ -42,4 +46,17 @@ class LLMFactory:
             "response_model": response_model,
             "messages": messages,
         }
-        return self.client.chat.completions.create(**completion_params)
+        try:
+            return self.client.chat.completions.create(**completion_params)
+        except APITimeoutError as e:
+            logger.error(f"OpenAI timeout: {e}", exc_info=True)
+            raise
+        except RateLimitError as e:
+            logger.error(f"OpenAI rate limit: {e}", exc_info=True)
+            raise
+        except APIConnectionError as e:
+            logger.error(f"OpenAI connection error: {e}", exc_info=True)
+            raise
+        except APIStatusError as e:
+            logger.error(f"OpenAI API error {e.status_code}: {e}", exc_info=True)
+            raise

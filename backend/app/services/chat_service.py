@@ -1,6 +1,5 @@
 import pandas as pd
 import io
-from schemas.places import PlaceResponse
 from schemas.chat import SynthesizedResponse
 from config.settings import get_settings
 from database.vector_store import VectorStore
@@ -28,7 +27,6 @@ class ChatService:
         history = self.chat_repo.get_history(session_id)
         classification = MessageClassifier.classify(message, history)
 
-        context = None
         extraction = None
 
         if classification.message_type in ("rag", "hybrid"):
@@ -74,46 +72,10 @@ class ChatService:
         recommended_places = []
         if response.recommended_place_names and context is not None:
             recommended = set(response.recommended_place_names)
-            filtered_df = context[context["name"].isin(recommended)]
-            for _, row in filtered_df.iterrows():
-                recommended_places.append(
-                    PlaceResponse(
-                        id=row.get("id"),
-                        name=row.get("name"),
-                        address=row.get("address"),
-                        district=row.get("district"),
-                        rating=row.get("rating"),
-                        user_rating_count=row.get("user_rating_count"),
-                        price_level=row.get("price_level"),
-                        maps_url=row.get("maps_url"),
-                        menu_url=row.get("menu_url"),
-                        main_category=row.get("main_category"),
-                        sub_category=row.get("sub_category"),
-                        opening_hours=row.get("opening_hours"),
-                        serves_vegetarian=row.get("serves_vegetarian"),
-                        serves_coffee=row.get("serves_coffee"),
-                        serves_beer=row.get("serves_beer"),
-                        serves_wine=row.get("serves_wine"),
-                        serves_cocktails=row.get("serves_cocktails"),
-                        serves_breakfast=row.get("serves_breakfast"),
-                        serves_lunch=row.get("serves_lunch"),
-                        serves_dinner=row.get("serves_dinner"),
-                        serves_dessert=row.get("serves_dessert"),
-                        outdoor_seating=row.get("outdoor_seating"),
-                        live_music=row.get("live_music"),
-                        good_for_groups=row.get("good_for_groups"),
-                        menu_for_children=row.get("menu_for_children"),
-                        takeout=row.get("takeout"),
-                        dine_in=row.get("dine_in"),
-                        reservable=row.get("reservable"),
-                        lat=row.get("lat"),
-                        lon=row.get("lon"),
-                        google_maps_direct_link=row.get("google_maps_direct_link"),
-                        price_range_end=row.get("price_range_end"),
-                        price_range_start=row.get("price_range_start"),
-                        editorial_summary=row.get("editorial_summary"),
-                    )
-                )
+            id_col = "place_id" if "place_id" in context.columns else "id"
+            place_ids = context[context["name"].isin(recommended)][id_col].tolist()
+            recommended_places = self.places_repo.get_places_by_ids(place_ids)
+
         response.recommended_places = recommended_places
         response._context = context
 
@@ -125,7 +87,6 @@ class ChatService:
             "assistant",
             response.answer,
             message_type=classification.message_type,
-            recommended_places=[p.model_dump() for p in recommended_places],
+            recommended_places=[p.id for p in recommended_places],
         )
-
         return response

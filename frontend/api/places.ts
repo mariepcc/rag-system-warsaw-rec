@@ -53,10 +53,13 @@ export async function getFavouritePlaces(category?: string) {
   return response.data;
 }
 
-export async function toggleFavourite(place: Place): Promise<boolean> {
+export async function toggleFavourite(
+  place: Place,
+  sessionId?: string,
+): Promise<boolean> {
   const response = await apiClient.post<{ is_favourite: boolean }>(
     `/places/favourites/${encodeURIComponent(place.id)}/toggle`,
-    place,
+    { sessionId },
   );
   return response.data.is_favourite;
 }
