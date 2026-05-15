@@ -242,4 +242,5 @@ crash.log
 *.backup
 
 
+.DS_Store
 .vscode/
