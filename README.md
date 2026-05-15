@@ -12,11 +12,11 @@ An AI-powered mobile app for discovering the best places in Warsaw. Ask in natur
 
 | AI Chat | Interactive Map | Map with place cards  |
 |:---:|:---:|:---:|
-| <img src="screenshots/chat.png" width="100%" alt="AI Chat" /> | <img src="screenshots/map.png" width="100%" alt="Interactive Map" /> | <img src="screenshots/cards.png" width="100%" alt="Place Cards" /> |
+| <img src="screenshots/chat.PNG" width="100%" alt="AI Chat" /> | <img src="screenshots/map.PNG" width="100%" alt="Interactive Map" /> | <img src="screenshots/cards.PNG" width="100%" alt="Place Cards" /> |
 
 | Favourites | Place Info | Login |
 |:---:|:---:|:---:|
-| <img src="screenshots/favourites.png" width="100%" alt="Favourites" /> | <img src="screenshots/info.png" width="100%" alt="Place Info" /> | <img src="screenshots/login.png" width="100%" alt="Login" /> |
+| <img src="screenshots/favourites.PNG" width="100%" alt="Favourites" /> | <img src="screenshots/info.PNG" width="100%" alt="Place Info" /> | <img src="screenshots/login.PNG" width="100%" alt="Login" /> |
 
 ---
 
