@@ -48,7 +48,6 @@ export function TypingIndicator({ index }: { index: number }) {
     };
   }, []);
 
-  // Fade między wiadomościami
   useEffect(() => {
     Animated.sequence([
       Animated.timing(fadeAnim, {
@@ -67,7 +66,6 @@ export function TypingIndicator({ index }: { index: number }) {
   return (
     <View style={s.wrap}>
       <View style={s.bubble}>
-        {/* Animowane kropki */}
         <View style={s.dots}>
           {[dot1, dot2, dot3].map((dot, i) => (
             <Animated.View
@@ -76,8 +74,6 @@ export function TypingIndicator({ index }: { index: number }) {
             />
           ))}
         </View>
-
-        {/* Zmieniający się tekst */}
         <Animated.Text style={[s.text, { opacity: fadeAnim }]}>
           {MESSAGES[displayedIndex % MESSAGES.length]}
         </Animated.Text>

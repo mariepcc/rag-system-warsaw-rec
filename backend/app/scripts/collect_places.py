@@ -1,21 +1,3 @@
-"""
-collect_places.py
-
-Pobiera miejsca z Google Places API (New) dla obszaru Warszawy,
-przypisuje dzielnicę na podstawie pliku GeoJSON z granicami,
-dodaje puste pola main_category, sub_category, menu_url
-i zapisuje wynik do data/warsaw_places.csv.
-
-Wymagania:
-    pip install requests shapely pandas tqdm
-
-Użycie:
-    GOOGLE_API_KEY=... python collect_places.py
-
-Plik GeoJSON z granicami dzielnic Warszawy w data/warsaw_districts.geojson
-
-"""
-
 import os
 import json
 import time
@@ -25,22 +7,15 @@ import pandas as pd
 from shapely.geometry import shape, Point
 from tqdm import tqdm
 
-# ---------------------------------------------------------------------------
-# Konfiguracja
-# ---------------------------------------------------------------------------
 
 API_KEY = os.environ.get("GOOGLE_API_KEY", "")
 if not API_KEY:
-    raise EnvironmentError("Brak zmiennej środowiskowej GOOGLE_API_KEY")
+    raise EnvironmentError("Missing GOOGLE_API_KEY environment variable")
 
 GEOJSON_PATH = "data/warsaw_districts.geojson"
 OUTPUT_PATH = "data/warsaw_places.csv"
 
-# Centrum Warszawy i promień wyszukiwania (w metrach).
-# 12 000 m to rozsądny promień — pokrywa większość dzielnic centralnych.
-# Dla pełnego pokrycia miasta używamy siatki kilku punktów.
 SEARCH_CENTERS = [
-    # (lat, lon, label)
     (52.2297, 21.0122, "centrum"),
     (52.2700, 20.9800, "wola-zoliborz"),
     (52.2700, 21.0600, "praga-polnoc"),
@@ -50,9 +25,8 @@ SEARCH_CENTERS = [
     (52.3000, 21.0500, "bialoleka"),
     (52.2100, 21.1200, "rembertow-wawer"),
 ]
-SEARCH_RADIUS = 8000  # metry — zachodzi na siebie, duplikaty są odfiltrowane
+SEARCH_RADIUS = 8000
 
-# Typy miejsc do pobrania (Google Places API primary types)
 INCLUDED_TYPES = [
     "restaurant",
     "cafe",
@@ -76,7 +50,6 @@ INCLUDED_TYPES = [
     "food",
 ]
 
-# Pola do pobrania z API (field mask)
 FIELD_MASK = ",".join(
     [
         "places.id",
@@ -118,15 +91,8 @@ PLACES_API_URL = "https://places.googleapis.com/v1/places:searchNearby"
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
 
-# ---------------------------------------------------------------------------
-# Ładowanie granic dzielnic
-# ---------------------------------------------------------------------------
-
 
 def load_districts(geojson_path: str) -> list[dict]:
-    """
-    Zwraca listę słowników: {"name": str, "geometry": shapely shape}
-    """
     with open(geojson_path, encoding="utf-8") as f:
         data = json.load(f)
 
@@ -137,30 +103,21 @@ def load_districts(geojson_path: str) -> list[dict]:
             or feature["properties"].get("nazwa")
             or feature["properties"].get("NAZWA")
             or feature["properties"].get("district")
-            or "Nieznana"
+            or "Unknown"
         )
         geom = shape(feature["geometry"])
         districts.append({"name": name, "geometry": geom})
 
-    logger.info("Załadowano %d dzielnic z %s", len(districts), geojson_path)
+    logger.info("Loaded %d districts from %s", len(districts), geojson_path)
     return districts
 
 
 def assign_district(lat: float, lon: float, districts: list[dict]) -> str | None:
-    """
-    Przypisuje dzielnicę na podstawie współrzędnych geograficznych.
-    Zwraca None jeśli punkt nie leży w żadnej dzielnicy (poza Warszawą).
-    """
-    point = Point(lon, lat)  # shapely: (x=lon, y=lat)
+    point = Point(lon, lat)
     for d in districts:
         if d["geometry"].contains(point):
             return d["name"]
     return None
-
-
-# ---------------------------------------------------------------------------
-# Pobieranie miejsc z Google Places API (New)
-# ---------------------------------------------------------------------------
 
 
 def fetch_places_for_center(
@@ -170,10 +127,6 @@ def fetch_places_for_center(
     included_type: str,
     api_key: str,
 ) -> list[dict]:
-    """
-    Pobiera miejsca dla jednego centrum i jednego typu.
-    API (New) zwraca max 20 wyników na request — nie ma paginacji w searchNearby.
-    """
     headers = {
         "Content-Type": "application/json",
         "X-Goog-Api-Key": api_key,
@@ -197,24 +150,17 @@ def fetch_places_for_center(
         data = response.json()
         return data.get("places", [])
     except requests.HTTPError as e:
-        logger.warning("HTTP error dla typu %s: %s", included_type, e)
+        logger.warning("HTTP error for type %s: %s", included_type, e)
         return []
     except Exception as e:
-        logger.warning("Błąd dla typu %s: %s", included_type, e)
+        logger.warning("Error for type %s: %s", included_type, e)
         return []
-
-
-# ---------------------------------------------------------------------------
-# Parsowanie odpowiedzi API do płaskiego słownika
-# ---------------------------------------------------------------------------
 
 
 def parse_place(p: dict) -> dict:
     loc = p.get("location", {})
     price_range = p.get("priceRange", {})
-
     opening_hours_raw = p.get("regularOpeningHours", {}).get("weekdayDescriptions", [])
-
     reviews_raw = p.get("reviews", [])
     all_reviews = " | ".join(
         r.get("text", {}).get("text", "") for r in reviews_raw if r.get("text")
@@ -239,7 +185,6 @@ def parse_place(p: dict) -> dict:
         "editorial_summary": p.get("editorialSummary", {}).get("text"),
         "maps_url": p.get("googleMapsUri"),
         "website": p.get("websiteUri"),
-        # Atrybuty boolowskie
         "serves_vegetarian": p.get("servesVegetarianFood"),
         "serves_coffee": p.get("servesCoffee"),
         "serves_beer": p.get("servesBeer"),
@@ -255,7 +200,6 @@ def parse_place(p: dict) -> dict:
         "takeout": p.get("takeout"),
         "dine_in": p.get("dineIn"),
         "menu_for_children": p.get("menuForChildren"),
-        # Pola własne — uzupełniane w preprocessing.ipynb
         "district": None,
         "menu_url": None,
         "main_category": None,
@@ -263,32 +207,25 @@ def parse_place(p: dict) -> dict:
     }
 
 
-# ---------------------------------------------------------------------------
-# Główna logika
-# ---------------------------------------------------------------------------
-
-
 def main():
     os.makedirs("data", exist_ok=True)
 
-    # 1. Załaduj granice dzielnic
     if not os.path.exists(GEOJSON_PATH):
         raise FileNotFoundError(
-            f"Brak pliku {GEOJSON_PATH}.\n"
-            "Pobierz granice dzielnic Warszawy np. z:\n"
+            f"Missing file {GEOJSON_PATH}.\n"
+            "Download Warsaw district boundaries from:\n"
             "https://github.com/andilabs/warszawa-dzielnice-geojson\n"
-            "i zapisz jako data/warsaw_districts.geojson"
+            "and save as data/warsaw_districts.geojson"
         )
     districts = load_districts(GEOJSON_PATH)
 
-    # 2. Zbierz miejsca
-    all_places: dict[str, dict] = {}  # place_id -> parsed dict (deduplication)
+    all_places: dict[str, dict] = {}
 
     total_calls = len(SEARCH_CENTERS) * len(INCLUDED_TYPES)
-    with tqdm(total=total_calls, desc="Pobieranie miejsc") as pbar:
+    with tqdm(total=total_calls, desc="Fetching places") as pbar:
         for lat, lon, label in SEARCH_CENTERS:
             for ptype in INCLUDED_TYPES:
-                pbar.set_postfix({"centrum": label, "typ": ptype})
+                pbar.set_postfix({"center": label, "type": ptype})
                 places = fetch_places_for_center(
                     lat, lon, SEARCH_RADIUS, ptype, API_KEY
                 )
@@ -297,11 +234,10 @@ def main():
                     if pid and pid not in all_places:
                         all_places[pid] = parse_place(p)
                 pbar.update(1)
-                time.sleep(0.05)  # grzeczność wobec API
+                time.sleep(0.05)
 
-    logger.info("Pobrano %d unikalnych miejsc przed filtrowaniem", len(all_places))
+    logger.info("Fetched %d unique places before filtering", len(all_places))
 
-    # 3. Przypisz dzielnice i odfiltruj miejsca poza Warszawą
     records = []
     outside_warsaw = 0
     for place in all_places.values():
@@ -317,25 +253,23 @@ def main():
         records.append(place)
 
     logger.info(
-        "Po filtrowaniu: %d miejsc w Warszawie, %d poza (%d łącznie)",
+        "After filtering: %d places in Warsaw, %d outside (%d total)",
         len(records),
         outside_warsaw,
         len(all_places),
     )
 
-    # 4. Zapisz do CSV
     df = pd.DataFrame(records)
     df.to_csv(OUTPUT_PATH, index=False, encoding="utf-8-sig")
     logger.info(
-        "Zapisano do %s (%d wierszy, %d kolumn)", OUTPUT_PATH, len(df), len(df.columns)
+        "Saved to %s (%d rows, %d columns)", OUTPUT_PATH, len(df), len(df.columns)
     )
 
-    # 5. Podsumowanie
-    print("\n--- Podsumowanie ---")
-    print(f"Łącznie miejsc: {len(df)}")
-    print(f"Dzielnice:\n{df['district'].value_counts().to_string()}")
+    print("\n--- Summary ---")
+    print(f"Total places: {len(df)}")
+    print(f"Districts:\n{df['district'].value_counts().to_string()}")
     print(
-        f"\nTypy (primary_type):\n{df['primary_type'].value_counts().head(20).to_string()}"
+        f"\nTypes (primary_type):\n{df['primary_type'].value_counts().head(20).to_string()}"
     )
 
 

@@ -220,6 +220,7 @@ __marimo__/
 
 google_places
 notebooks
+warsaw_places.csv
 
 # Lokalne pliki binarne i wtyczki
 .terraform/
@@ -239,3 +240,6 @@ crash.log
 # Pliki zapasowe i tymczasowe
 .terraform.lock.hcl
 *.backup
+
+
+.vscode/

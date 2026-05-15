@@ -29,7 +29,7 @@ resource "aws_db_instance" "main" {
   instance_class    = "db.t4g.micro"  
   allocated_storage = 20
 
-  db_name  = "spotguide"
+  db_name  = "warsaw_places"
   username = "spotguide_user"
   password = var.db_password
 
