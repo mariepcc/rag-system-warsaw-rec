@@ -6,7 +6,7 @@ from datetime import datetime
 
 class ChatRequest(BaseModel):
     message: str
-    session_id: str
+    session_id: Optional[str] = None
 
     @field_validator("message")
     @classmethod
